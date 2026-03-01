@@ -25,7 +25,12 @@ export function createServiceClient() {
   const url = getUrl();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (serviceRoleKey) {
-    return createClient(url, serviceRoleKey);
+    return createClient(url, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
   }
   console.warn('SUPABASE_SERVICE_ROLE_KEY not set, using anon key (RLS will apply)');
   return createClient(url, getAnonKey());
