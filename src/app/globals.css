@@ -2,22 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: 40 20% 97%;
+    --foreground: 40 5% 7%;
+    --card: 0 0% 100%;
+    --card-foreground: 40 5% 7%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 40 5% 7%;
+    --primary: 153 37% 26%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 150 25% 90%;
+    --secondary-foreground: 153 37% 26%;
+    --muted: 40 10% 93%;
+    --muted-foreground: 40 2% 42%;
+    --accent: 23 72% 55%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 40 10% 88%;
+    --input: 40 10% 88%;
+    --ring: 153 37% 26%;
+    --chart-1: 153 37% 26%;
+    --chart-2: 23 72% 55%;
+    --chart-3: 150 25% 90%;
+    --chart-4: 40 30% 55%;
+    --chart-5: 153 50% 30%;
+    --radius: 0.5rem;
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-kept-bg text-kept-dark font-sans antialiased;
+  }
 }
 
 @layer utilities {
