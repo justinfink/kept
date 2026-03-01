@@ -83,12 +83,9 @@ export default function ReferralDetailPage() {
 
   const fetchOutreachEvents = useCallback(async () => {
     try {
-      const { data } = await supabase
-        .from('outreach_events')
-        .select('*')
-        .eq('referral_id', referralId)
-        .order('sent_at', { ascending: false });
-      if (data) setOutreachEvents(data);
+      const res = await fetch(`/api/outreach-events?referralId=${referralId}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setOutreachEvents(data);
     } catch (err) {
       console.error('Failed to fetch outreach events:', err);
     }
@@ -143,22 +140,20 @@ export default function ReferralDetailPage() {
     setError('');
     setMatchLoading(true);
 
-    // Save provider selection to referral
-    const { data: providerRecord } = await supabase
-      .from('providers')
-      .select('id')
-      .eq('npi', provider.npi)
-      .single();
-
-    if (providerRecord) {
-      await fetch(`/api/referrals/${referralId}`, {
-        method: 'PATCH',
+    try {
+      // Use server-side API to look up provider and update referral (bypasses RLS)
+      const selectRes = await fetch('/api/select-provider', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: 'matched',
-          matched_provider_id: providerRecord.id,
-        }),
+        body: JSON.stringify({ referralId, npi: provider.npi }),
       });
+      const selectData = await selectRes.json();
+
+      if (!selectData.success) {
+        setError(selectData.error || 'Could not save provider selection. Please try again.');
+        setMatchLoading(false);
+        return;
+      }
 
       setMatchedProviders([]);
       setMatchLoading(false);
@@ -169,7 +164,7 @@ export default function ReferralDetailPage() {
         const res = await fetch('/api/generate-outreach', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ referralId, providerId: providerRecord.id }),
+          body: JSON.stringify({ referralId, providerId: selectData.providerId }),
         });
         const data = await res.json();
         if (data.content) {
@@ -182,12 +177,12 @@ export default function ReferralDetailPage() {
       } finally {
         setOutreachLoading(false);
       }
-    } else {
+
+      fetchReferral();
+    } catch {
       setError('Could not save provider selection. Please try again.');
       setMatchLoading(false);
     }
-
-    fetchReferral();
   };
 
   const handleSendOutreach = async () => {
