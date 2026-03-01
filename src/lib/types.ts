@@ -64,6 +64,14 @@ export interface Provider {
   phone: string | null;
   is_accepting_new: boolean | null;
   nppes_last_updated: string | null;
+  languages: string[] | null;
+  accepts_insurance: string[] | null;
+  telehealth_available: boolean | null;
+  earliest_availability: string | null;
+  approach: string | null;
+  bio: string | null;
+  average_rating: number | null;
+  review_count: number | null;
   created_at: string;
 }
 
@@ -121,4 +129,9 @@ export interface MatchedProvider {
   state?: string;
   zip?: string;
   phone?: string;
+  availability?: string;
+  rating?: number;
+  languages?: string[];
+  telehealth?: boolean;
+  accepts_patient_insurance?: boolean;
 }

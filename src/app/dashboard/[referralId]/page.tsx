@@ -480,16 +480,40 @@ export default function ReferralDetailPage() {
                               )}
                             </div>
                             <p className="text-sm text-kept-gray">{p.specialty}</p>
+
+                            {/* Rich provider details */}
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {p.rating && (
+                                <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">
+                                  {p.rating}/5 rating
+                                </span>
+                              )}
+                              {p.availability && (
+                                <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
+                                  {p.availability}
+                                </span>
+                              )}
+                              {p.accepts_patient_insurance && (
+                                <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                                  Accepts insurance
+                                </span>
+                              )}
+                              {p.telehealth && (
+                                <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">
+                                  Telehealth
+                                </span>
+                              )}
+                              {p.languages && p.languages.length > 1 && (
+                                <span className="text-xs bg-gray-50 text-kept-gray px-2 py-0.5 rounded-full">
+                                  {p.languages.join(', ')}
+                                </span>
+                              )}
+                            </div>
+
                             {(p.city || p.state) && (
-                              <p className="text-xs text-kept-gray mt-1 flex items-center gap-1">
+                              <p className="text-xs text-kept-gray mt-2 flex items-center gap-1">
                                 <MapPin className="w-3 h-3" />
-                                {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}
-                              </p>
-                            )}
-                            {p.phone && (
-                              <p className="text-xs text-kept-gray mt-0.5 flex items-center gap-1">
-                                <Phone className="w-3 h-3" />
-                                {p.phone}
+                                {[p.city, p.state].filter(Boolean).join(', ')}
                               </p>
                             )}
                             <p className="text-sm text-kept-sage mt-2 italic leading-relaxed">{p.rationale}</p>
@@ -644,23 +668,66 @@ export default function ReferralDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-start justify-between">
+              <div className="space-y-3">
                 <div>
                   <h4 className="font-semibold text-kept-dark">
                     {provider.full_name}{provider.credential ? `, ${provider.credential}` : ''}
                   </h4>
                   <p className="text-sm text-kept-gray">{provider.specialty}</p>
+                </div>
+
+                {provider.bio && (
+                  <p className="text-sm text-kept-dark leading-relaxed">{provider.bio}</p>
+                )}
+
+                {provider.approach && (
+                  <div className="p-3 bg-kept-bg rounded-lg">
+                    <p className="text-xs text-kept-gray mb-1 font-medium">Therapeutic Approach</p>
+                    <p className="text-sm text-kept-dark">{provider.approach}</p>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  {provider.average_rating && (
+                    <span className="text-xs bg-amber-50 text-amber-700 px-2 py-1 rounded-full">
+                      {provider.average_rating}/5 from {provider.review_count} patients
+                    </span>
+                  )}
+                  {provider.earliest_availability && (
+                    <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full">
+                      Available: {provider.earliest_availability}
+                    </span>
+                  )}
+                  {provider.telehealth_available && (
+                    <span className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded-full">
+                      Telehealth available
+                    </span>
+                  )}
+                  {provider.languages && provider.languages.length > 1 && (
+                    <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
+                      {provider.languages.join(', ')}
+                    </span>
+                  )}
+                </div>
+
+                {provider.accepts_insurance && provider.accepts_insurance.length > 0 && (
+                  <p className="text-xs text-kept-gray">
+                    Accepts: {provider.accepts_insurance.join(', ')}
+                  </p>
+                )}
+
+                <div className="flex items-center gap-4 text-xs text-kept-gray pt-1">
                   {provider.address_line && (
-                    <p className="text-xs text-kept-gray mt-1 flex items-center gap-1">
+                    <span className="flex items-center gap-1">
                       <MapPin className="w-3 h-3" />
-                      {[provider.address_line, provider.city, provider.state, provider.zip_code].filter(Boolean).join(', ')}
-                    </p>
+                      {[provider.address_line, provider.city, provider.state].filter(Boolean).join(', ')}
+                    </span>
                   )}
                   {provider.phone && (
-                    <p className="text-xs text-kept-gray mt-1 flex items-center gap-1">
+                    <span className="flex items-center gap-1">
                       <Phone className="w-3 h-3" />
                       {provider.phone}
-                    </p>
+                    </span>
                   )}
                 </div>
               </div>

@@ -73,16 +73,29 @@ Return ONLY the SMS text. Nothing else.`,
         {
           role: 'user',
           content: `Patient first name: ${patient.first_name}
+Patient insurance: ${patient.insurance || 'Unknown'}
 Referring doctor: ${referral.referring_pcp_name}
 Practice name: ${practice?.name || 'the practice'}
-Provider name: ${provider.full_name}
-Provider credential: ${provider.credential || 'Therapist'}
-Provider specialty: ${provider.specialty || 'Behavioral Health'}
-Provider location: ${providerLocation || 'nearby'}
-Provider phone: ${provider.phone || ''}
+
+PROVIDER DETAILS:
+Name: ${provider.full_name}
+Credential: ${provider.credential || 'Therapist'}
+Specialty: ${provider.specialty || 'Behavioral Health'}
+Location: ${providerLocation || 'nearby'}
+Phone: ${provider.phone || ''}
+Bio: ${provider.bio || 'Experienced behavioral health provider'}
+Approach: ${provider.approach || ''}
+Languages: ${(provider.languages || ['English']).join(', ')}
+Telehealth: ${provider.telehealth_available ? 'Yes — virtual visits available' : 'In-person only'}
+Earliest availability: ${provider.earliest_availability || 'Soon'}
+Rating: ${provider.average_rating ? `${provider.average_rating}/5 from ${provider.review_count} patients` : 'New provider'}
+Accepts patient insurance: ${(provider.accepts_insurance || []).includes(patient.insurance) ? 'Yes' : 'Check with office'}
+
 Booking link: ${bookingLink}
-PHQ-9 score (DO NOT mention): ${referral.phq9_score}
-Internal context (DO NOT mention): ${referral.diagnosis_context || 'Behavioral health referral'}`,
+
+INTERNAL ONLY (never include in message):
+PHQ-9 score: ${referral.phq9_score}
+Context: ${referral.diagnosis_context || 'Behavioral health referral'}`,
         },
       ],
     });
