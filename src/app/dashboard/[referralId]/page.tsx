@@ -26,6 +26,7 @@ import {
   MessageSquare,
   Bell,
   Mail,
+  Calendar,
 } from 'lucide-react';
 
 function InlineError({ message, onDismiss }: { message: string; onDismiss: () => void }) {
@@ -508,6 +509,130 @@ export default function ReferralDetailPage() {
                       </CardContent>
                     </Card>
                   ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Outreach Sent: Waiting for patient to book */}
+        {referral.status === 'outreach_sent' && (
+          <Card className="border-0 shadow-sm border-l-4 border-l-kept-orange">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold text-kept-dark flex items-center gap-2">
+                <Clock className="w-4 h-4 text-kept-orange" />
+                Waiting for Patient to Book
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-kept-gray">
+                Outreach was sent{referral.outreach_sent_at && ` on ${new Date(referral.outreach_sent_at).toLocaleDateString()}`}.
+                The patient has a booking link to schedule their appointment.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-kept-sage/30 text-kept-sage hover:bg-kept-sage-light/50 gap-2"
+                  onClick={() => {
+                    const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
+                    navigator.clipboard.writeText(`${appUrl}/book/${referralId}`);
+                    setSuccess('Booking link copied to clipboard.');
+                    setTimeout(() => setSuccess(''), 3000);
+                  }}
+                >
+                  <Calendar className="w-4 h-4" />
+                  Copy Booking Link
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-kept-sage/30 text-kept-sage hover:bg-kept-sage-light/50 gap-2"
+                  onClick={async () => {
+                    setOutreachLoading(true);
+                    setError('');
+                    try {
+                      const providerId = referral.matched_provider_id;
+                      if (!providerId) {
+                        setError('No provider matched. Please find a match first.');
+                        return;
+                      }
+                      const res = await fetch('/api/generate-outreach', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ referralId, providerId }),
+                      });
+                      const data = await res.json();
+                      if (data.content) {
+                        setOutreachDraft(data.content);
+                      } else {
+                        setError('Failed to generate follow-up message.');
+                      }
+                    } catch {
+                      setError('Failed to generate message.');
+                    } finally {
+                      setOutreachLoading(false);
+                    }
+                  }}
+                  disabled={outreachLoading}
+                >
+                  {outreachLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                  Re-send Outreach
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-kept-green/30 text-kept-green hover:bg-emerald-50 gap-2"
+                  onClick={async () => {
+                    setActionLoading('book_manual');
+                    try {
+                      await fetch(`/api/referrals/${referralId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          status: 'booked',
+                          booked_at: new Date().toISOString(),
+                          appointment_date: new Date(Date.now() + 3 * 86400000).toISOString(),
+                        }),
+                      });
+                      setSuccess('Manually marked as booked.');
+                      fetchReferral();
+                    } catch {
+                      setError('Failed to update status.');
+                    } finally {
+                      setActionLoading('');
+                    }
+                  }}
+                  disabled={actionLoading === 'book_manual'}
+                >
+                  {actionLoading === 'book_manual' ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  Mark Booked Manually
+                </Button>
+              </div>
+
+              {/* Show outreach draft for re-send */}
+              {outreachDraft && (
+                <div className="mt-3 space-y-3">
+                  <Textarea
+                    value={outreachDraft}
+                    onChange={(e) => setOutreachDraft(e.target.value)}
+                    rows={3}
+                    className="border-kept-sage/20 focus:ring-kept-sage text-sm"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs ${outreachDraft.length > 300 ? 'text-red-500' : 'text-kept-gray'}`}>
+                      {outreachDraft.length}/300 characters
+                    </span>
+                    <Button
+                      onClick={handleSendOutreach}
+                      disabled={sendLoading || !outreachDraft.trim()}
+                      className="bg-kept-sage hover:bg-kept-sage/90 text-white gap-2"
+                      size="sm"
+                    >
+                      {sendLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      Send SMS
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>
