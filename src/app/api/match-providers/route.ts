@@ -2,12 +2,44 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import Anthropic from '@anthropic-ai/sdk';
 
+async function queryNPPES(taxonomy: string, zipCode: string): Promise<any[]> {
+  const url = new URL('https://npiregistry.cms.hhs.gov/api/');
+  url.searchParams.set('version', '2.1');
+  url.searchParams.set('taxonomy_description', taxonomy);
+  url.searchParams.set('postal_code', zipCode);
+  url.searchParams.set('limit', '10');
+
+  try {
+    const res = await fetch(url.toString());
+    const data = await res.json();
+    return data.results || [];
+  } catch {
+    return [];
+  }
+}
+
+function formatProvider(r: any) {
+  const basic = r.basic || {};
+  const address = r.addresses?.[0] || {};
+  const taxonomy = r.taxonomies?.[0] || {};
+  return {
+    npi: r.number,
+    name: `${basic.first_name || ''} ${basic.last_name || basic.organization_name || ''}`.trim(),
+    credential: basic.credential || '',
+    specialty: taxonomy.desc || '',
+    address: address.address_1 || '',
+    city: address.city || '',
+    state: address.state || '',
+    zip: address.postal_code?.substring(0, 5) || '',
+    phone: address.telephone_number || '',
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = createServiceClient();
     const { referralId } = await request.json();
 
-    // Fetch the referral with patient data
     const { data: referral, error: refError } = await supabase
       .from('referrals')
       .select('*, patients (*)')
@@ -21,56 +53,56 @@ export async function POST(request: NextRequest) {
     const patient = referral.patients;
     const zipCode = patient.zip_code;
 
-    // Query NPPES for behavioral health providers near patient
-    const taxonomies = [
-      'Clinical Psychologist',
-      'Psychiatry & Neurology',
-      'Clinical Social Worker',
-      'Mental Health Counselor',
-    ];
+    // Query NPPES with separate calls per taxonomy (API doesn't support comma-separated)
+    const taxonomies = ['Psychiatry', 'Psycholog', 'Social Worker', 'Counselor'];
 
-    const nppesUrl = new URL('https://npiregistry.cms.hhs.gov/api/');
-    nppesUrl.searchParams.set('version', '2.1');
-    nppesUrl.searchParams.set('taxonomy_description', taxonomies.join(','));
-    nppesUrl.searchParams.set('postal_code', zipCode);
-    nppesUrl.searchParams.set('limit', '20');
+    const allResults = await Promise.all(
+      taxonomies.map((t) => queryNPPES(t, zipCode))
+    );
 
-    const nppesResponse = await fetch(nppesUrl.toString());
-    const nppesData = await nppesResponse.json();
-
-    if (!nppesData.results || nppesData.results.length === 0) {
-      // Fallback: try broader search without postal code filter
-      nppesUrl.searchParams.delete('postal_code');
-      nppesUrl.searchParams.set('state', 'OR');
-      nppesUrl.searchParams.set('city', 'Portland');
-      const fallbackResponse = await fetch(nppesUrl.toString());
-      const fallbackData = await fallbackResponse.json();
-
-      if (!fallbackData.results || fallbackData.results.length === 0) {
-        return NextResponse.json({
-          error: 'No behavioral health providers found in this area'
-        }, { status: 404 });
+    // Merge and deduplicate by NPI
+    const seen = new Set<string>();
+    const mergedResults: any[] = [];
+    for (const results of allResults) {
+      for (const r of results) {
+        if (!seen.has(r.number)) {
+          seen.add(r.number);
+          mergedResults.push(r);
+        }
       }
-      nppesData.results = fallbackData.results;
     }
 
-    // Format NPPES results for Claude
-    const formattedProviders = nppesData.results.map((r: any) => {
-      const basic = r.basic || {};
-      const address = r.addresses?.[0] || {};
-      const taxonomy = r.taxonomies?.[0] || {};
-      return {
-        npi: r.number,
-        name: `${basic.first_name || ''} ${basic.last_name || basic.organization_name || ''}`.trim(),
-        credential: basic.credential || '',
-        specialty: taxonomy.desc || '',
-        address: `${address.address_1 || ''}`,
-        city: address.city || '',
-        state: address.state || '',
-        zip: address.postal_code?.substring(0, 5) || '',
-        phone: address.telephone_number || '',
-      };
-    });
+    // If no results for ZIP, try broader Portland OR search
+    if (mergedResults.length === 0) {
+      for (const taxonomy of taxonomies) {
+        const url = new URL('https://npiregistry.cms.hhs.gov/api/');
+        url.searchParams.set('version', '2.1');
+        url.searchParams.set('taxonomy_description', taxonomy);
+        url.searchParams.set('state', 'OR');
+        url.searchParams.set('city', 'Portland');
+        url.searchParams.set('limit', '8');
+        try {
+          const res = await fetch(url.toString());
+          const data = await res.json();
+          for (const r of data.results || []) {
+            if (!seen.has(r.number)) {
+              seen.add(r.number);
+              mergedResults.push(r);
+            }
+          }
+        } catch {
+          // continue
+        }
+      }
+    }
+
+    if (mergedResults.length === 0) {
+      return NextResponse.json({
+        error: 'No behavioral health providers found in this area',
+      }, { status: 404 });
+    }
+
+    const formattedProviders = mergedResults.map(formatProvider);
 
     // Claude ranks top 3
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -82,7 +114,8 @@ export async function POST(request: NextRequest) {
 Given a list of providers from the NPPES registry and a patient's context, rank the top 3
 best-fit providers. Consider: specialty match to the patient's needs, geographic proximity,
 credential level, and whether the provider type aligns with the diagnosis context.
-Return JSON only. No markdown, no code fences. Just the raw JSON object.`,
+Return JSON only. No markdown, no code fences. Just the raw JSON object.
+The JSON must have this exact shape: {"providers": [{"npi": "...", "name": "...", "credential": "...", "specialty": "...", "rationale": "..."}]}`,
       messages: [
         {
           role: 'user',
@@ -103,7 +136,6 @@ ${JSON.stringify(formattedProviders, null, 2)}`,
     try {
       ranked = JSON.parse(responseText);
     } catch {
-      // Try to extract JSON from the response
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         ranked = JSON.parse(jsonMatch[0]);
@@ -113,30 +145,28 @@ ${JSON.stringify(formattedProviders, null, 2)}`,
     }
 
     // Cache providers in the providers table (upsert by NPI)
-    const providersToCache = (ranked.providers || []).map((p: any) => {
+    for (const p of ranked.providers || []) {
       const nppesMatch = formattedProviders.find((np: any) => np.npi === p.npi);
-      return {
-        npi: p.npi,
-        full_name: p.name,
-        credential: p.credential || nppesMatch?.credential || '',
-        specialty: p.specialty || nppesMatch?.specialty || '',
-        address_line: nppesMatch?.address || '',
-        city: nppesMatch?.city || '',
-        state: nppesMatch?.state || '',
-        zip_code: nppesMatch?.zip || '',
-        phone: nppesMatch?.phone || '',
-        is_accepting_new: true,
-        nppes_last_updated: new Date().toISOString().split('T')[0],
-      };
-    });
-
-    for (const provider of providersToCache) {
-      await supabase
-        .from('providers')
-        .upsert(provider, { onConflict: 'npi' });
+      if (nppesMatch) {
+        await supabase
+          .from('providers')
+          .upsert({
+            npi: p.npi,
+            full_name: p.name,
+            credential: p.credential || nppesMatch.credential || '',
+            specialty: p.specialty || nppesMatch.specialty || '',
+            address_line: nppesMatch.address || '',
+            city: nppesMatch.city || '',
+            state: nppesMatch.state || '',
+            zip_code: nppesMatch.zip || '',
+            phone: nppesMatch.phone || '',
+            is_accepting_new: true,
+            nppes_last_updated: new Date().toISOString().split('T')[0],
+          }, { onConflict: 'npi' });
+      }
     }
 
-    // Attach rationale to each provider
+    // Enrich with address data from NPPES
     const enrichedProviders = (ranked.providers || []).map((p: any) => {
       const nppesMatch = formattedProviders.find((np: any) => np.npi === p.npi);
       return {

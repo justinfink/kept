@@ -16,6 +16,7 @@ import {
   Send,
   CheckCircle2,
   XCircle,
+  X,
   User,
   Phone,
   MapPin,
@@ -26,6 +27,27 @@ import {
   Bell,
   Mail,
 } from 'lucide-react';
+
+function InlineError({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+      <span className="flex-1">{message}</span>
+      <button onClick={onDismiss} className="shrink-0 text-red-400 hover:text-red-600">
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+function InlineSuccess({ message }: { message: string }) {
+  return (
+    <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700">
+      <CheckCircle2 className="w-4 h-4 shrink-0" />
+      <span>{message}</span>
+    </div>
+  );
+}
 
 export default function ReferralDetailPage() {
   const router = useRouter();
@@ -39,9 +61,10 @@ export default function ReferralDetailPage() {
   const [outreachDraft, setOutreachDraft] = useState('');
   const [outreachLoading, setOutreachLoading] = useState(false);
   const [sendLoading, setSendLoading] = useState(false);
-  const [, setSelectedProvider] = useState<MatchedProvider | null>(null);
   const [outreachEvents, setOutreachEvents] = useState<OutreachEvent[]>([]);
   const [actionLoading, setActionLoading] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   const fetchReferral = useCallback(async () => {
     try {
@@ -95,6 +118,7 @@ export default function ReferralDetailPage() {
 
   const handleFindMatch = async () => {
     setMatchLoading(true);
+    setError('');
     try {
       const res = await fetch('/api/match-providers', {
         method: 'POST',
@@ -102,21 +126,21 @@ export default function ReferralDetailPage() {
         body: JSON.stringify({ referralId }),
       });
       const data = await res.json();
-      if (data.providers) {
+      if (data.providers && data.providers.length > 0) {
         setMatchedProviders(data.providers);
       } else {
-        alert(data.error || 'No providers found');
+        setError(data.error || 'No providers found in this area. Try a different ZIP code.');
       }
-    } catch (err) {
-      console.error('Match error:', err);
-      alert('Failed to find providers. Please try again.');
+    } catch {
+      setError('Failed to search for providers. Please try again.');
     } finally {
       setMatchLoading(false);
     }
   };
 
   const handleSelectProvider = async (provider: MatchedProvider) => {
-    setSelectedProvider(provider);
+    setError('');
+    setMatchLoading(true);
 
     // Save provider selection to referral
     const { data: providerRecord } = await supabase
@@ -135,6 +159,9 @@ export default function ReferralDetailPage() {
         }),
       });
 
+      setMatchedProviders([]);
+      setMatchLoading(false);
+
       // Now generate outreach
       setOutreachLoading(true);
       try {
@@ -146,12 +173,17 @@ export default function ReferralDetailPage() {
         const data = await res.json();
         if (data.content) {
           setOutreachDraft(data.content);
+        } else {
+          setError('Failed to generate outreach message. You can write one manually below.');
         }
-      } catch (err) {
-        console.error('Outreach generation error:', err);
+      } catch {
+        setError('Failed to generate outreach message.');
       } finally {
         setOutreachLoading(false);
       }
+    } else {
+      setError('Could not save provider selection. Please try again.');
+      setMatchLoading(false);
     }
 
     fetchReferral();
@@ -160,6 +192,7 @@ export default function ReferralDetailPage() {
   const handleSendOutreach = async () => {
     if (!outreachDraft.trim()) return;
     setSendLoading(true);
+    setError('');
     try {
       const res = await fetch('/api/send-outreach', {
         method: 'POST',
@@ -169,14 +202,16 @@ export default function ReferralDetailPage() {
       const data = await res.json();
       if (data.success) {
         setOutreachDraft('');
+        setSuccess(data.twilioSid
+          ? 'SMS sent successfully via Twilio.'
+          : 'Outreach logged. Configure Twilio to send real SMS.');
         fetchReferral();
         fetchOutreachEvents();
       } else {
-        alert(data.error || 'Failed to send outreach');
+        setError(data.error || 'Failed to send outreach.');
       }
-    } catch (err) {
-      console.error('Send error:', err);
-      alert('Failed to send SMS. Please try again.');
+    } catch {
+      setError('Failed to send SMS. Please try again.');
     } finally {
       setSendLoading(false);
     }
@@ -184,6 +219,7 @@ export default function ReferralDetailPage() {
 
   const handleMarkKept = async () => {
     setActionLoading('kept');
+    setError('');
     try {
       await fetch(`/api/referrals/${referralId}`, {
         method: 'PATCH',
@@ -191,16 +227,16 @@ export default function ReferralDetailPage() {
         body: JSON.stringify({ status: 'kept' }),
       });
 
-      // Notify PCP
       await fetch('/api/notify-pcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ referralId }),
       });
 
+      setSuccess('Appointment marked as kept. PCP has been notified.');
       fetchReferral();
-    } catch (err) {
-      console.error('Mark kept error:', err);
+    } catch {
+      setError('Failed to update referral status.');
     } finally {
       setActionLoading('');
     }
@@ -208,6 +244,7 @@ export default function ReferralDetailPage() {
 
   const handleMarkNoShow = async () => {
     setActionLoading('no_show');
+    setError('');
     try {
       await fetch(`/api/referrals/${referralId}`, {
         method: 'PATCH',
@@ -215,8 +252,8 @@ export default function ReferralDetailPage() {
         body: JSON.stringify({ status: 'no_show' }),
       });
       fetchReferral();
-    } catch (err) {
-      console.error('Mark no-show error:', err);
+    } catch {
+      setError('Failed to update referral status.');
     } finally {
       setActionLoading('');
     }
@@ -224,6 +261,7 @@ export default function ReferralDetailPage() {
 
   const handleFollowUp = async () => {
     setOutreachLoading(true);
+    setError('');
     try {
       const res = await fetch('/api/generate-followup', {
         method: 'POST',
@@ -233,9 +271,11 @@ export default function ReferralDetailPage() {
       const data = await res.json();
       if (data.content) {
         setOutreachDraft(data.content);
+      } else {
+        setError('Failed to generate follow-up message.');
       }
-    } catch (err) {
-      console.error('Follow-up generation error:', err);
+    } catch {
+      setError('Failed to generate follow-up message.');
     } finally {
       setOutreachLoading(false);
     }
@@ -243,15 +283,20 @@ export default function ReferralDetailPage() {
 
   const handleSendReminder = async () => {
     setActionLoading('reminder');
+    setError('');
     try {
-      await fetch('/api/send-reminder', {
+      const res = await fetch('/api/send-reminder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ referralId }),
       });
+      const data = await res.json();
+      if (data.success) {
+        setSuccess('Reminder sent.');
+      }
       fetchOutreachEvents();
-    } catch (err) {
-      console.error('Reminder error:', err);
+    } catch {
+      setError('Failed to send reminder.');
     } finally {
       setActionLoading('');
     }
@@ -260,7 +305,10 @@ export default function ReferralDetailPage() {
   if (loading || !referral) {
     return (
       <div className="min-h-screen bg-kept-bg flex items-center justify-center">
-        <div className="text-kept-gray animate-pulse">Loading referral...</div>
+        <div className="flex items-center gap-2 text-kept-gray">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          Loading referral...
+        </div>
       </div>
     );
   }
@@ -295,6 +343,10 @@ export default function ReferralDetailPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Inline notifications */}
+        {error && <InlineError message={error} onDismiss={() => setError('')} />}
+        {success && <InlineSuccess message={success} />}
+
         {/* Patient Summary */}
         <Card className="border-0 shadow-sm">
           <CardContent className="p-5">
@@ -310,6 +362,8 @@ export default function ReferralDetailPage() {
                         ? 'bg-emerald-50 text-kept-green'
                         : referral.status === 'no_show'
                         ? 'bg-red-50 text-red-700'
+                        : referral.status === 'booked'
+                        ? 'bg-emerald-50 text-kept-green'
                         : 'bg-kept-sage-light text-kept-sage'
                     }
                   >
@@ -400,28 +454,33 @@ export default function ReferralDetailPage() {
                       </>
                     )}
                   </Button>
+                  {matchLoading && (
+                    <p className="text-xs text-kept-gray mt-3 animate-pulse">
+                      Querying the NPI registry, then Claude will rank the best matches...
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
                   <p className="text-sm text-kept-gray">
-                    Claude ranked these providers based on specialty match, proximity, and patient needs.
+                    Claude ranked these providers based on specialty match, proximity, and patient needs. Select one to continue.
                   </p>
                   {matchedProviders.map((p, i) => (
                     <Card
                       key={p.npi}
-                      className="border border-kept-sage/10 hover:border-kept-sage/30 transition-colors cursor-pointer"
+                      className="border border-kept-sage/10 hover:border-kept-sage/30 hover:shadow-md transition-all cursor-pointer"
                       onClick={() => handleSelectProvider(p)}
                     >
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between gap-3">
-                          <div>
+                          <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-xs font-bold text-kept-sage bg-kept-sage-light rounded-full w-5 h-5 flex items-center justify-center">
                                 {i + 1}
                               </span>
                               <h4 className="font-semibold text-kept-dark">{p.name}</h4>
                               {p.credential && (
-                                <span className="text-xs text-kept-gray">{p.credential}</span>
+                                <span className="text-xs text-kept-gray bg-gray-100 px-1.5 py-0.5 rounded">{p.credential}</span>
                               )}
                             </div>
                             <p className="text-sm text-kept-gray">{p.specialty}</p>
@@ -431,7 +490,13 @@ export default function ReferralDetailPage() {
                                 {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}
                               </p>
                             )}
-                            <p className="text-sm text-kept-sage mt-2 italic">{p.rationale}</p>
+                            {p.phone && (
+                              <p className="text-xs text-kept-gray mt-0.5 flex items-center gap-1">
+                                <Phone className="w-3 h-3" />
+                                {p.phone}
+                              </p>
+                            )}
+                            <p className="text-sm text-kept-sage mt-2 italic leading-relaxed">{p.rationale}</p>
                           </div>
                           <Button
                             size="sm"
@@ -494,7 +559,7 @@ export default function ReferralDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {outreachLoading ? (
-                <div className="flex items-center gap-2 text-kept-gray text-sm py-4">
+                <div className="flex items-center gap-2 text-kept-gray text-sm py-6 justify-center">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Claude is drafting a warm, non-clinical message...
                 </div>
@@ -508,11 +573,8 @@ export default function ReferralDetailPage() {
                     placeholder="SMS message will appear here..."
                   />
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-kept-gray">
+                    <span className={`text-xs ${outreachDraft.length > 300 ? 'text-red-500 font-medium' : 'text-kept-gray'}`}>
                       {outreachDraft.length}/300 characters
-                      {outreachDraft.length > 300 && (
-                        <span className="text-red-500 ml-1">Over limit</span>
-                      )}
                     </span>
                     <Button
                       onClick={handleSendOutreach}
@@ -527,6 +589,9 @@ export default function ReferralDetailPage() {
                       Send SMS
                     </Button>
                   </div>
+                  <p className="text-xs text-kept-gray">
+                    Review this message before sending. You can edit anything above.
+                  </p>
                 </>
               )}
             </CardContent>
