@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20241022',
+      model: 'claude-sonnet-4-6',
       max_tokens: 512,
       system: `You are writing an SMS on behalf of a doctor's office to help a patient connect with a therapist.
 Rules:

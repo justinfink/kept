@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20241022',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: `You are a care coordination assistant helping match patients to behavioral health providers.
 Given a list of providers from the NPPES registry and a patient's context, rank the top 3
