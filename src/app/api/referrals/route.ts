@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 export async function GET() {
   try {
@@ -20,7 +22,10 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
+    const response = NextResponse.json(data);
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    return response;
   } catch {
     return NextResponse.json(
       { error: 'Failed to fetch referrals' },
