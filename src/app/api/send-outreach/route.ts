@@ -35,10 +35,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Replace booking link placeholder
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    // Booking link (already embedded in the message by generate-outreach)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://kept-alpha.vercel.app';
     const bookingLink = `${appUrl}/book/${referralId}`;
-    const finalContent = content.replace('[BOOKING_LINK]', bookingLink);
+    const finalContent = content;
 
     let twilioSid = null;
 

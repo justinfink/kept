@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     const supabase = createServiceClient();
     const { referralId, providerId } = await request.json();
 
-    // Fetch referral with patient + provider
+    // Fetch referral with patient
     const { data: referral, error: refError } = await supabase
       .from('referrals')
       .select('*, patients (*)')
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Referral not found' }, { status: 404 });
     }
 
-    // Fetch the selected provider
+    // Fetch the selected provider with full details
     const { data: provider, error: provError } = await supabase
       .from('providers')
       .select('*')
@@ -38,31 +38,51 @@ export async function POST(request: NextRequest) {
       .eq('id', referral.practice_id)
       .single();
 
+    // Build the real booking link — no placeholders
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://kept-alpha.vercel.app';
+    const bookingLink = `${appUrl}/book/${referralId}`;
+
+    // Build provider location string
+    const providerLocation = [provider.address_line, provider.city, provider.state]
+      .filter(Boolean)
+      .join(', ');
+
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 512,
-      system: `You are writing an SMS on behalf of a doctor's office to help a patient connect with a therapist.
-Rules:
-- Use the patient's first name only
-- Reference the referring doctor by name
-- NEVER mention the PHQ-9 score, depression, anxiety, or any clinical term
-- NEVER use the word 'mental health' in the SMS
-- Keep it under 300 characters
-- Include a placeholder [BOOKING_LINK] where the link should go
-- Tone: warm, brief, like a trusted person reaching out, not a system notification
-- End with a clear call to action (tap to book / pick a time)
-- If the PHQ-9 score is 20 or above, include "If you need immediate support, call 988" at the end
-Return ONLY the SMS text. No quotes, no explanation.`,
+      system: `You write SMS messages for a care coordinator at a doctor's office. You're texting a patient to help them book a first visit with a therapist or counselor their doctor recommended.
+
+Your job is to sound like a real person — not a chatbot, not a system notification. Think: a friendly coordinator named Sarah who texts patients as part of her day.
+
+HARD RULES:
+- Use the patient's first name only.
+- Mention their doctor by name ("Dr. Chen asked me to reach out").
+- Mention the provider's name AND one specific detail about them (their office location, their specialty area, or their credential) so the patient knows this is a real person picked for them, not a random link.
+- Include the booking link EXACTLY as provided — do not wrap it in brackets or modify it.
+- NEVER mention PHQ-9, depression, anxiety, diagnosis, or any clinical term. Say things like "the support Dr. Chen recommended" or "someone to talk to."
+- Keep it under 280 characters.
+- End with a simple call to action.
+- If PHQ-9 is 20+, add on a new line at the end: "If you ever need immediate support, you can call or text 988 anytime."
+
+TONE: Brief, warm, human. Like a text from someone at the front desk who actually cares. No exclamation points. No "we're here for you" corporate filler.
+
+Return ONLY the SMS text. Nothing else.`,
       messages: [
         {
           role: 'user',
-          content: `Patient: ${patient.first_name}
+          content: `Patient first name: ${patient.first_name}
 Referring doctor: ${referral.referring_pcp_name}
-Practice: ${practice?.name || 'the practice'}
-Provider they'll be seeing: ${provider.full_name}, ${provider.credential || ''}
-Context (for tone only, do NOT include in message): PHQ-9 ${referral.phq9_score}, ${referral.diagnosis_context || ''}`,
+Practice name: ${practice?.name || 'the practice'}
+Provider name: ${provider.full_name}
+Provider credential: ${provider.credential || 'Therapist'}
+Provider specialty: ${provider.specialty || 'Behavioral Health'}
+Provider location: ${providerLocation || 'nearby'}
+Provider phone: ${provider.phone || ''}
+Booking link: ${bookingLink}
+PHQ-9 score (DO NOT mention): ${referral.phq9_score}
+Internal context (DO NOT mention): ${referral.diagnosis_context || 'Behavioral health referral'}`,
         },
       ],
     });

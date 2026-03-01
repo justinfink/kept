@@ -20,39 +20,52 @@ export async function POST(request: NextRequest) {
     const patient = referral.patients;
     const provider = referral.providers;
 
-    // Count previous follow-up attempts
+    // Count previous outreach attempts
     const { count } = await supabase
       .from('outreach_events')
       .select('*', { count: 'exact', head: true })
-      .eq('referral_id', referralId)
-      .eq('event_type', 'no_show_followup');
+      .eq('referral_id', referralId);
 
     const attemptNumber = (count || 0) + 1;
     const daysSinceReferral = Math.floor(
       (Date.now() - new Date(referral.created_at).getTime()) / (1000 * 60 * 60 * 24)
     );
 
+    // Build booking link
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://kept-alpha.vercel.app';
+    const bookingLink = `${appUrl}/book/${referralId}`;
+
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 512,
-      system: `You are writing a follow-up SMS for a patient who missed their first therapy appointment.
-Rules:
-- No guilt, no disappointment, no 'we noticed you missed'
-- Normalize that scheduling is hard
-- Offer to rebook with one tap
-- Same rules as initial outreach: no clinical language, first name only, under 300 chars
-- Include [BOOKING_LINK] placeholder
-- If this is attempt 3 or higher, include "If you need immediate support, call 988"
-Return ONLY the SMS text. No quotes, no explanation.`,
+      system: `You write follow-up SMS messages for a care coordinator. The patient missed their appointment or hasn't booked yet, and you're reaching back out.
+
+Your tone should shift based on how many times you've reached out:
+- Attempt 2: Casual check-in. "Hey [name], just circling back..."
+- Attempt 3: Acknowledge it's been a while, offer flexibility. "No rush, just wanted to make sure you still have the link..."
+- Attempt 4+: Gentle, final. "Just wanted you to know the option is still open if you want it."
+
+HARD RULES:
+- NEVER guilt them. No "we noticed you missed" or "you didn't show up."
+- Normalize that life gets busy. Don't make it a big deal.
+- Include the booking link EXACTLY as provided.
+- Mention the provider by name if available.
+- No clinical language whatsoever.
+- Keep under 250 characters.
+- If attempt 3+, add on a new line: "If you ever need immediate support, call or text 988."
+
+Return ONLY the SMS text. Nothing else.`,
       messages: [
         {
           role: 'user',
-          content: `Patient: ${patient.first_name}
-This is follow-up attempt #${attemptNumber}
-Original provider: ${provider?.full_name || 'the provider'}
-Days since original referral: ${daysSinceReferral}`,
+          content: `Patient first name: ${patient.first_name}
+Provider name: ${provider?.full_name || 'your provider'}
+Provider location: ${[provider?.city, provider?.state].filter(Boolean).join(', ') || 'nearby'}
+This is outreach attempt #${attemptNumber}
+Days since referral: ${daysSinceReferral}
+Booking link: ${bookingLink}`,
         },
       ],
     });
