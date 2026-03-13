@@ -5,8 +5,8 @@ const PRACTICE_ID = 'a1000000-0000-0000-0000-000000000001';
 
 const PATIENTS = [
   {
-    first_name: 'Maria',
-    last_name: 'Santos',
+    first_name: 'Test',
+    last_name: 'Patient1',
     phone: '+15551230001',
     zip_code: '10001',
     insurance: 'Medicaid',
@@ -15,14 +15,13 @@ const PATIENTS = [
     referral: {
       referring_pcp_name: 'Dr. Linda Park',
       phq9_score: 15,
-      diagnosis_context:
-        'Moderate depression with comorbid generalized anxiety. Patient is a Spanish-speaking single mother of two, recently separated. Prefers female provider. Struggling with sleep, appetite, and low energy for 3+ months.',
+      diagnosis_context: 'Behavioral health referral. Prefers female provider. Spanish-speaking.',
       high_complexity: false,
     },
   },
   {
-    first_name: 'James',
-    last_name: 'Okafor',
+    first_name: 'Test',
+    last_name: 'Patient2',
     phone: '+15551230002',
     zip_code: '10002',
     insurance: 'BlueCross BlueShield',
@@ -31,14 +30,13 @@ const PATIENTS = [
     referral: {
       referring_pcp_name: 'Dr. Alan Weiss',
       phq9_score: 22,
-      diagnosis_context:
-        'Severe MDD with passive suicidal ideation (no plan or intent). History of PTSD from military service. Currently unemployed and socially isolated. Requires provider with trauma-informed care experience and VA-adjacent familiarity.',
+      diagnosis_context: 'Behavioral health referral. Trauma history. Requires trauma-informed provider.',
       high_complexity: true,
     },
   },
   {
-    first_name: 'Emily',
-    last_name: 'Chen',
+    first_name: 'Test',
+    last_name: 'Patient3',
     phone: '+15551230003',
     zip_code: '10003',
     insurance: 'Aetna',
@@ -47,14 +45,13 @@ const PATIENTS = [
     referral: {
       referring_pcp_name: 'Dr. Sarah Goldberg',
       phq9_score: 11,
-      diagnosis_context:
-        'Mild-to-moderate postpartum depression, 8 weeks after delivery of first child. Anxious about breastfeeding and infant attachment. Husband is supportive. Prefers telehealth to avoid childcare logistics.',
+      diagnosis_context: 'Behavioral health referral. Prefers telehealth.',
       high_complexity: false,
     },
   },
   {
-    first_name: 'Robert',
-    last_name: 'Williams',
+    first_name: 'Test',
+    last_name: 'Patient4',
     phone: '+15551230004',
     zip_code: '10004',
     insurance: 'Medicare',
@@ -63,14 +60,13 @@ const PATIENTS = [
     referral: {
       referring_pcp_name: 'Dr. Michael Torres',
       phq9_score: 18,
-      diagnosis_context:
-        'Major depressive episode with a history of alcohol use disorder (currently in remission 14 months). 67-year-old retired teacher, lives alone since wife passed. Needs provider comfortable with dual-diagnosis and older adult issues.',
+      diagnosis_context: 'Behavioral health referral. Older adult. Dual-diagnosis history.',
       high_complexity: true,
     },
   },
   {
-    first_name: 'Aisha',
-    last_name: 'Patel',
+    first_name: 'Test',
+    last_name: 'Patient5',
     phone: '+15551230005',
     zip_code: '10005',
     insurance: 'UnitedHealthcare',
@@ -79,8 +75,7 @@ const PATIENTS = [
     referral: {
       referring_pcp_name: 'Dr. Jessica Kim',
       phq9_score: 8,
-      diagnosis_context:
-        'Mild depression and adjustment disorder following a recent job loss and relocation. 29-year-old software engineer, motivated and psychologically minded. Open to CBT. Prefers evening or weekend availability.',
+      diagnosis_context: 'Behavioral health referral. Prefers CBT. Evening/weekend availability preferred.',
       high_complexity: false,
     },
   },
