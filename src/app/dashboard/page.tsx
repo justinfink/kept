@@ -181,7 +181,7 @@ export default function DashboardPage() {
   };
 
   const handleOpenBulkReview = async () => {
-    const actionable = referrals.filter((r) => r.status === 'new' || r.status === 'matched');
+    const actionable = referrals.filter((r) => (r.status === 'new' || r.status === 'matched') && r.patients?.consent_given);
     if (!actionable.length) return;
 
     setShowBulkReview(true);
@@ -273,7 +273,7 @@ export default function DashboardPage() {
     (r) => getDaysRemaining(r.hedis_window_closes_at) <= 4 && !['kept', 'closed'].includes(r.status)
   ).length;
 
-  const actionableCount = referrals.filter((r) => r.status === 'new' || r.status === 'matched').length;
+  const actionableCount = referrals.filter((r) => (r.status === 'new' || r.status === 'matched') && r.patients?.consent_given).length;
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
