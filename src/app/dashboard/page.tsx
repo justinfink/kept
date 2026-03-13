@@ -24,10 +24,8 @@ import {
   Plus,
   Link,
   Loader2,
-  Zap,
   ChevronDown,
   ChevronUp,
-  X,
 } from 'lucide-react';
 import type { BulkProposal } from '@/app/api/bulk-prepare/route';
 
@@ -300,9 +298,8 @@ export default function DashboardPage() {
                 onClick={handleOpenBulkReview}
                 size="sm"
                 variant="outline"
-                className="border-kept-sage text-kept-sage hover:bg-kept-sage-light/60 gap-1.5 font-medium"
+                className="border-kept-sage/30 text-kept-sage hover:bg-kept-sage-light/60 gap-1.5 font-medium"
               >
-                <Zap className="w-4 h-4" />
                 Review Queue
                 <span className="bg-kept-sage text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none">
                   {actionableCount}
@@ -641,24 +638,13 @@ export default function DashboardPage() {
       <Dialog open={showBulkReview} onOpenChange={(open) => { if (!bulkSending) setShowBulkReview(open); }}>
         <DialogContent className="max-w-2xl w-full max-h-[90vh] flex flex-col p-0 gap-0">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-kept-sage/10">
-            <div>
-              <DialogTitle className="text-kept-dark flex items-center gap-2">
-                <Zap className="w-5 h-5 text-kept-sage" />
-                Bulk Review Queue
-              </DialogTitle>
-              {!bulkPreparing && bulkProposals.length > 0 && (
-                <p className="text-xs text-kept-gray mt-0.5">
-                  Review and edit each message before sending. Uncheck to skip.
-                </p>
-              )}
-            </div>
-            <button
-              onClick={() => { if (!bulkSending) setShowBulkReview(false); }}
-              className="text-kept-gray hover:text-kept-dark"
-            >
-              <X className="w-5 h-5" />
-            </button>
+          <div className="px-6 pt-6 pb-4 border-b border-kept-sage/10">
+            <DialogTitle className="text-kept-dark">Review Queue</DialogTitle>
+            {!bulkPreparing && bulkProposals.length > 0 && (
+              <p className="text-xs text-kept-gray mt-0.5">
+                Review and edit each message before sending. Uncheck to skip.
+              </p>
+            )}
           </div>
 
           {/* Body */}
