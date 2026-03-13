@@ -132,9 +132,7 @@ export default function ReferralDetailPage() {
     try {
       const res = await fetch(`/api/referrals/${referralId}`);
       const data = await res.json();
-      if (data.id) {
-        setReferral(data);
-      }
+      if (data.id) setReferral(data);
     } catch (err) {
       console.error('Failed to fetch referral:', err);
     } finally {
@@ -149,6 +147,30 @@ export default function ReferralDetailPage() {
       if (Array.isArray(data)) setOutreachEvents(data);
     } catch (err) {
       console.error('Failed to fetch outreach events:', err);
+    }
+  }, [referralId]);
+
+  // Define handleFindMatch with useCallback so it can be a stable dep reference
+  // and referenced before the auto-match effect fires.
+  const handleFindMatch = useCallback(async () => {
+    setMatchLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/match-providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referralId }),
+      });
+      const data = await res.json();
+      if (data.providers && data.providers.length > 0) {
+        setMatchedProviders(data.providers);
+      } else {
+        setError(data.error || 'No providers found in this area. Try a different ZIP code.');
+      }
+    } catch {
+      setError('Failed to search for providers. Please try again.');
+    } finally {
+      setMatchLoading(false);
     }
   }, [referralId]);
 
@@ -175,7 +197,7 @@ export default function ReferralDetailPage() {
     };
   }, [referralId, fetchReferral, fetchOutreachEvents]);
 
-  // Auto-trigger provider match when arriving from "New Referral" flow
+  // Auto-trigger provider match when arriving via ?autoMatch=true (e.g. from New Referral form)
   useEffect(() => {
     if (
       referral &&
@@ -186,37 +208,13 @@ export default function ReferralDetailPage() {
       autoMatchTriggered.current = true;
       handleFindMatch();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [referral]);
-
-  const handleFindMatch = async () => {
-    setMatchLoading(true);
-    setError('');
-    try {
-      const res = await fetch('/api/match-providers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referralId }),
-      });
-      const data = await res.json();
-      if (data.providers && data.providers.length > 0) {
-        setMatchedProviders(data.providers);
-      } else {
-        setError(data.error || 'No providers found in this area. Try a different ZIP code.');
-      }
-    } catch {
-      setError('Failed to search for providers. Please try again.');
-    } finally {
-      setMatchLoading(false);
-    }
-  };
+  }, [referral, searchParams, handleFindMatch]);
 
   const handleSelectProvider = async (provider: MatchedProvider) => {
     setError('');
     setMatchLoading(true);
 
     try {
-      // Use server-side API to look up provider and update referral (bypasses RLS)
       const selectRes = await fetch('/api/select-provider', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -230,10 +228,14 @@ export default function ReferralDetailPage() {
         return;
       }
 
+      // Optimistically reflect matched status so the provider card appears immediately
+      setReferral((prev) =>
+        prev ? { ...prev, status: 'matched', matched_provider_id: selectData.providerId } : prev
+      );
       setMatchedProviders([]);
       setMatchLoading(false);
 
-      // Now generate outreach
+      // Generate outreach draft in the background
       setOutreachLoading(true);
       try {
         const res = await fetch('/api/generate-outreach', {
@@ -253,6 +255,7 @@ export default function ReferralDetailPage() {
         setOutreachLoading(false);
       }
 
+      // Background sync to pick up the full provider record (bio, ratings, etc.)
       fetchReferral();
     } catch {
       setError('Could not save provider selection. Please try again.');
@@ -272,12 +275,16 @@ export default function ReferralDetailPage() {
       });
       const data = await res.json();
       if (data.success) {
+        // Optimistically flip to outreach_sent so the UI updates immediately
+        setReferral((prev) =>
+          prev ? { ...prev, status: 'outreach_sent', outreach_sent_at: new Date().toISOString() } : prev
+        );
         setOutreachDraft('');
         setSuccess(data.twilioSid
           ? 'SMS sent successfully via Twilio.'
           : 'Outreach logged. Configure Twilio to send real SMS.');
-        fetchReferral();
         fetchOutreachEvents();
+        fetchReferral(); // background sync
       } else {
         setError(data.error || 'Failed to send outreach.');
       }
@@ -297,15 +304,17 @@ export default function ReferralDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'kept' }),
       });
-
       await fetch('/api/notify-pcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ referralId }),
       });
-
+      // Optimistically flip to kept
+      setReferral((prev) =>
+        prev ? { ...prev, status: 'kept', appointment_kept_at: new Date().toISOString() } : prev
+      );
       setSuccess('Appointment marked as kept. PCP has been notified.');
-      fetchReferral();
+      fetchReferral(); // background sync
     } catch {
       setError('Failed to update referral status.');
     } finally {
@@ -322,7 +331,9 @@ export default function ReferralDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'no_show' }),
       });
-      fetchReferral();
+      // Optimistically flip to no_show
+      setReferral((prev) => prev ? { ...prev, status: 'no_show' } : prev);
+      fetchReferral(); // background sync
     } catch {
       setError('Failed to update referral status.');
     } finally {
@@ -364,8 +375,8 @@ export default function ReferralDetailPage() {
       const data = await res.json();
       if (data.success) {
         setSuccess('Reminder sent.');
+        fetchOutreachEvents();
       }
-      fetchOutreachEvents();
     } catch {
       setError('Failed to send reminder.');
     } finally {
@@ -768,6 +779,7 @@ export default function ReferralDetailPage() {
                   className="border-kept-green/30 text-kept-green hover:bg-emerald-50 gap-2"
                   onClick={async () => {
                     setActionLoading('book_manual');
+                    const appointmentDate = new Date(Date.now() + 3 * 86400000).toISOString();
                     try {
                       await fetch(`/api/referrals/${referralId}`, {
                         method: 'PATCH',
@@ -775,11 +787,15 @@ export default function ReferralDetailPage() {
                         body: JSON.stringify({
                           status: 'booked',
                           booked_at: new Date().toISOString(),
-                          appointment_date: new Date(Date.now() + 3 * 86400000).toISOString(),
+                          appointment_date: appointmentDate,
                         }),
                       });
+                      // Optimistically flip to booked
+                      setReferral((prev) =>
+                        prev ? { ...prev, status: 'booked', booked_at: new Date().toISOString(), appointment_date: appointmentDate } : prev
+                      );
                       setSuccess('Manually marked as booked.');
-                      fetchReferral();
+                      fetchReferral(); // background sync
                     } catch {
                       setError('Failed to update status.');
                     } finally {
