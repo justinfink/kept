@@ -48,20 +48,22 @@ function getUrgencyBg(days: number): string {
   return 'bg-kept-sage-light/50 border-kept-sage/10';
 }
 
-function getActionButton(status: ReferralStatus): { label: string; icon: React.ReactNode } {
+function getActionButton(status: ReferralStatus): { label: string; icon: React.ReactNode; hint: string } {
   switch (status) {
     case 'new':
-      return { label: 'Find Match', icon: <Search className="w-4 h-4" /> };
+      return { label: 'Find Match', icon: <Search className="w-4 h-4" />, hint: 'Match a provider to get started' };
     case 'matched':
-      return { label: 'Send Outreach', icon: <Phone className="w-4 h-4" /> };
+      return { label: 'Send Outreach', icon: <Phone className="w-4 h-4" />, hint: 'Provider matched — send patient SMS' };
     case 'outreach_sent':
-      return { label: 'View Outreach', icon: <ArrowRight className="w-4 h-4" /> };
+      return { label: 'View Status', icon: <ArrowRight className="w-4 h-4" />, hint: 'Waiting for patient to book' };
     case 'booked':
-      return { label: 'Confirm Kept', icon: <CheckCircle2 className="w-4 h-4" /> };
+      return { label: 'Confirm Kept', icon: <CheckCircle2 className="w-4 h-4" />, hint: 'Appointment scheduled — confirm attendance' };
     case 'no_show':
-      return { label: 'Follow Up', icon: <Phone className="w-4 h-4" /> };
+      return { label: 'Follow Up', icon: <Phone className="w-4 h-4" />, hint: 'Patient no-showed — send follow-up' };
+    case 'kept':
+      return { label: 'View', icon: <CheckCircle2 className="w-4 h-4" />, hint: 'Appointment kept — PCP notified' };
     default:
-      return { label: 'View', icon: <ArrowRight className="w-4 h-4" /> };
+      return { label: 'View', icon: <ArrowRight className="w-4 h-4" />, hint: '' };
   }
 }
 
@@ -223,6 +225,9 @@ export default function DashboardPage() {
                         <span>ZIP {patient.zip_code}</span>
                         <span>PCP: {referral.referring_pcp_name}</span>
                       </div>
+                      {action.hint && (
+                        <p className="text-xs text-kept-sage mt-1.5 font-medium">{action.hint}</p>
+                      )}
                     </div>
 
                     {/* Right: Urgency + Action */}

@@ -41,11 +41,70 @@ function InlineError({ message, onDismiss }: { message: string; onDismiss: () =>
   );
 }
 
-function InlineSuccess({ message }: { message: string }) {
+function InlineSuccess({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 4000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+
   return (
     <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700">
       <CheckCircle2 className="w-4 h-4 shrink-0" />
-      <span>{message}</span>
+      <span className="flex-1">{message}</span>
+      <button onClick={onDismiss} className="shrink-0 text-emerald-400 hover:text-emerald-600">
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+const WORKFLOW_STEPS: { status: string; label: string }[] = [
+  { status: 'new', label: 'New' },
+  { status: 'matched', label: 'Matched' },
+  { status: 'outreach_sent', label: 'Outreach Sent' },
+  { status: 'booked', label: 'Booked' },
+  { status: 'kept', label: 'Kept' },
+];
+
+const STATUS_ORDER = ['new', 'matched', 'outreach_sent', 'booked', 'kept'];
+
+function WorkflowStepper({ status }: { status: string }) {
+  const currentIndex = STATUS_ORDER.indexOf(status);
+  const effectiveIndex = status === 'no_show' || status === 'rebooked' ? STATUS_ORDER.indexOf('booked') : currentIndex;
+
+  return (
+    <div className="flex items-center gap-0">
+      {WORKFLOW_STEPS.map((step, i) => {
+        const isComplete = i < effectiveIndex;
+        const isCurrent = i === effectiveIndex;
+        return (
+          <div key={step.status} className="flex items-center flex-1 min-w-0">
+            <div className="flex flex-col items-center">
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                  isComplete
+                    ? 'bg-kept-sage text-white'
+                    : isCurrent
+                    ? 'bg-kept-sage text-white ring-2 ring-kept-sage/30 ring-offset-1'
+                    : 'bg-gray-100 text-kept-gray'
+                }`}
+              >
+                {isComplete ? <CheckCircle2 className="w-3.5 h-3.5" /> : i + 1}
+              </div>
+              <span
+                className={`text-xs mt-1 whitespace-nowrap ${
+                  isCurrent ? 'text-kept-sage font-semibold' : isComplete ? 'text-kept-sage' : 'text-kept-gray'
+                }`}
+              >
+                {step.label}
+              </span>
+            </div>
+            {i < WORKFLOW_STEPS.length - 1 && (
+              <div className={`h-px flex-1 mx-1 mb-4 ${i < effectiveIndex ? 'bg-kept-sage' : 'bg-gray-200'}`} />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -341,7 +400,19 @@ export default function ReferralDetailPage() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         {/* Inline notifications */}
         {error && <InlineError message={error} onDismiss={() => setError('')} />}
-        {success && <InlineSuccess message={success} />}
+        {success && <InlineSuccess message={success} onDismiss={() => setSuccess('')} />}
+
+        {/* Workflow Progress */}
+        {!['kept', 'closed'].includes(referral.status) ? (
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-5">
+              <WorkflowStepper status={referral.status} />
+              {referral.status === 'no_show' && (
+                <p className="text-xs text-kept-orange text-center mt-2 font-medium">Patient did not show — follow up to rebook</p>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Patient Summary */}
         <Card className="border-0 shadow-sm">
@@ -534,6 +605,83 @@ export default function ReferralDetailPage() {
           </Card>
         )}
 
+        {/* Matched Provider Info — shown for all statuses after matching */}
+        {provider && referral.status !== 'new' && (
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold text-kept-dark flex items-center gap-2">
+                <User className="w-4 h-4 text-kept-sage" />
+                Matched Provider
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div>
+                  <h4 className="font-semibold text-kept-dark">
+                    {provider.full_name}{provider.credential ? `, ${provider.credential}` : ''}
+                  </h4>
+                  <p className="text-sm text-kept-gray">{provider.specialty}</p>
+                </div>
+
+                {provider.bio && (
+                  <p className="text-sm text-kept-dark leading-relaxed">{provider.bio}</p>
+                )}
+
+                {provider.approach && (
+                  <div className="p-3 bg-kept-bg rounded-lg">
+                    <p className="text-xs text-kept-gray mb-1 font-medium">Therapeutic Approach</p>
+                    <p className="text-sm text-kept-dark">{provider.approach}</p>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  {provider.average_rating && (
+                    <span className="text-xs bg-amber-50 text-amber-700 px-2 py-1 rounded-full">
+                      {provider.average_rating}/5 from {provider.review_count} patients
+                    </span>
+                  )}
+                  {provider.earliest_availability && (
+                    <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full">
+                      Available: {provider.earliest_availability}
+                    </span>
+                  )}
+                  {provider.telehealth_available && (
+                    <span className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded-full">
+                      Telehealth available
+                    </span>
+                  )}
+                  {provider.languages && provider.languages.length > 1 && (
+                    <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
+                      {provider.languages.join(', ')}
+                    </span>
+                  )}
+                </div>
+
+                {provider.accepts_insurance && provider.accepts_insurance.length > 0 && (
+                  <p className="text-xs text-kept-gray">
+                    Accepts: {provider.accepts_insurance.join(', ')}
+                  </p>
+                )}
+
+                <div className="flex items-center gap-4 text-xs text-kept-gray pt-1">
+                  {provider.address_line && (
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {[provider.address_line, provider.city, provider.state].filter(Boolean).join(', ')}
+                    </span>
+                  )}
+                  {provider.phone && (
+                    <span className="flex items-center gap-1">
+                      <Phone className="w-3 h-3" />
+                      {provider.phone}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Outreach Sent: Waiting for patient to book */}
         {referral.status === 'outreach_sent' && (
           <Card className="border-0 shadow-sm border-l-4 border-l-kept-orange">
@@ -658,85 +806,8 @@ export default function ReferralDetailPage() {
           </Card>
         )}
 
-        {/* Matched Provider Info */}
-        {provider && referral.status !== 'new' && (
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold text-kept-dark flex items-center gap-2">
-                <User className="w-4 h-4 text-kept-sage" />
-                Matched Provider
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div>
-                  <h4 className="font-semibold text-kept-dark">
-                    {provider.full_name}{provider.credential ? `, ${provider.credential}` : ''}
-                  </h4>
-                  <p className="text-sm text-kept-gray">{provider.specialty}</p>
-                </div>
-
-                {provider.bio && (
-                  <p className="text-sm text-kept-dark leading-relaxed">{provider.bio}</p>
-                )}
-
-                {provider.approach && (
-                  <div className="p-3 bg-kept-bg rounded-lg">
-                    <p className="text-xs text-kept-gray mb-1 font-medium">Therapeutic Approach</p>
-                    <p className="text-sm text-kept-dark">{provider.approach}</p>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap gap-2">
-                  {provider.average_rating && (
-                    <span className="text-xs bg-amber-50 text-amber-700 px-2 py-1 rounded-full">
-                      {provider.average_rating}/5 from {provider.review_count} patients
-                    </span>
-                  )}
-                  {provider.earliest_availability && (
-                    <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full">
-                      Available: {provider.earliest_availability}
-                    </span>
-                  )}
-                  {provider.telehealth_available && (
-                    <span className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded-full">
-                      Telehealth available
-                    </span>
-                  )}
-                  {provider.languages && provider.languages.length > 1 && (
-                    <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
-                      {provider.languages.join(', ')}
-                    </span>
-                  )}
-                </div>
-
-                {provider.accepts_insurance && provider.accepts_insurance.length > 0 && (
-                  <p className="text-xs text-kept-gray">
-                    Accepts: {provider.accepts_insurance.join(', ')}
-                  </p>
-                )}
-
-                <div className="flex items-center gap-4 text-xs text-kept-gray pt-1">
-                  {provider.address_line && (
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {[provider.address_line, provider.city, provider.state].filter(Boolean).join(', ')}
-                    </span>
-                  )}
-                  {provider.phone && (
-                    <span className="flex items-center gap-1">
-                      <Phone className="w-3 h-3" />
-                      {provider.phone}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Outreach Draft / Send Section */}
-        {(referral.status === 'matched' || outreachDraft) && (
+        {/* Outreach Draft / Send Section — only for matched; outreach_sent and no_show have their own inline textarea */}
+        {(referral.status === 'matched' || (outreachDraft && referral.status !== 'outreach_sent' && referral.status !== 'no_show')) && (
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold text-kept-dark flex items-center gap-2">
