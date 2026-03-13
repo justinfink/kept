@@ -24,7 +24,12 @@ import {
   Plus,
   Link,
   Loader2,
+  Zap,
+  ChevronDown,
+  ChevronUp,
+  X,
 } from 'lucide-react';
+import type { BulkProposal } from '@/app/api/bulk-prepare/route';
 
 const STATUS_CONFIG: Record<ReferralStatus, { label: string; className: string }> = {
   new: { label: 'New', className: 'bg-kept-sage-light text-kept-sage border-kept-sage/20' },
@@ -101,6 +106,16 @@ export default function DashboardPage() {
   // Per-card copy-link state
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Bulk review state
+  const [showBulkReview, setShowBulkReview] = useState(false);
+  const [bulkProposals, setBulkProposals] = useState<BulkProposal[]>([]);
+  const [bulkPreparing, setBulkPreparing] = useState(false);
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkExcluded, setBulkExcluded] = useState<Set<string>>(new Set());
+  const [bulkMessages, setBulkMessages] = useState<Record<string, string>>({});
+  const [bulkExpanded, setBulkExpanded] = useState<Set<string>>(new Set());
+  const [bulkSendResults, setBulkSendResults] = useState<Record<string, boolean | null>>({});
+
   const fetchReferrals = useCallback(async () => {
     try {
       const res = await fetch('/api/referrals');
@@ -166,6 +181,80 @@ export default function DashboardPage() {
     }
   };
 
+  const handleOpenBulkReview = async () => {
+    const actionable = referrals.filter((r) => r.status === 'new' || r.status === 'matched');
+    if (!actionable.length) return;
+
+    setShowBulkReview(true);
+    setBulkPreparing(true);
+    setBulkProposals([]);
+    setBulkExcluded(new Set());
+    setBulkMessages({});
+    setBulkExpanded(new Set());
+    setBulkSendResults({});
+
+    try {
+      const res = await fetch('/api/bulk-prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referralIds: actionable.map((r) => r.id) }),
+      });
+      const data = await res.json();
+      if (data.proposals) {
+        setBulkProposals(data.proposals);
+        const msgs: Record<string, string> = {};
+        for (const p of data.proposals) {
+          if (!p.error) msgs[p.referralId] = p.message;
+        }
+        setBulkMessages(msgs);
+        // Auto-exclude any that errored
+        const errored = new Set<string>(
+          data.proposals.filter((p: BulkProposal) => p.error).map((p: BulkProposal) => p.referralId)
+        );
+        setBulkExcluded(errored);
+      }
+    } catch (err) {
+      console.error('Bulk prepare failed:', err);
+    } finally {
+      setBulkPreparing(false);
+    }
+  };
+
+  const handleBulkSend = async () => {
+    const toSend = bulkProposals.filter((p) => !bulkExcluded.has(p.referralId) && !p.error);
+    if (!toSend.length) return;
+
+    setBulkSending(true);
+    const initialResults: Record<string, boolean | null> = {};
+    for (const p of toSend) initialResults[p.referralId] = null; // pending
+    setBulkSendResults(initialResults);
+
+    try {
+      const res = await fetch('/api/bulk-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: toSend.map((p) => ({
+            referralId: p.referralId,
+            providerId: p.provider.id,
+            message: bulkMessages[p.referralId] ?? p.message,
+          })),
+        }),
+      });
+      const data = await res.json();
+      const results: Record<string, boolean | null> = {};
+      for (const r of data.results || []) {
+        results[r.referralId] = r.success;
+      }
+      setBulkSendResults(results);
+      fetchReferrals();
+    } catch (err) {
+      console.error('Bulk send failed:', err);
+    } finally {
+      setBulkSending(false);
+    }
+  };
+
   const filteredReferrals = referrals.filter((r) => {
     if (filter === 'at_risk') {
       const days = getDaysRemaining(r.hedis_window_closes_at);
@@ -180,6 +269,8 @@ export default function DashboardPage() {
   const atRiskCount = referrals.filter(
     (r) => getDaysRemaining(r.hedis_window_closes_at) <= 4 && !['kept', 'closed'].includes(r.status)
   ).length;
+
+  const actionableCount = referrals.filter((r) => r.status === 'new' || r.status === 'matched').length;
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -204,6 +295,20 @@ export default function DashboardPage() {
             <span className="text-xs text-kept-gray hidden sm:block">Riverside Family Medicine</span>
           </div>
           <div className="flex items-center gap-3">
+            {actionableCount > 0 && (
+              <Button
+                onClick={handleOpenBulkReview}
+                size="sm"
+                variant="outline"
+                className="border-kept-sage text-kept-sage hover:bg-kept-sage-light/60 gap-1.5 font-medium"
+              >
+                <Zap className="w-4 h-4" />
+                Review Queue
+                <span className="bg-kept-sage text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none">
+                  {actionableCount}
+                </span>
+              </Button>
+            )}
             <Button
               onClick={() => setShowNewReferral(true)}
               size="sm"
@@ -529,6 +634,187 @@ export default function DashboardPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Review Dialog */}
+      <Dialog open={showBulkReview} onOpenChange={(open) => { if (!bulkSending) setShowBulkReview(open); }}>
+        <DialogContent className="max-w-2xl w-full max-h-[90vh] flex flex-col p-0 gap-0">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-kept-sage/10">
+            <div>
+              <DialogTitle className="text-kept-dark flex items-center gap-2">
+                <Zap className="w-5 h-5 text-kept-sage" />
+                Bulk Review Queue
+              </DialogTitle>
+              {!bulkPreparing && bulkProposals.length > 0 && (
+                <p className="text-xs text-kept-gray mt-0.5">
+                  Review and edit each message before sending. Uncheck to skip.
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => { if (!bulkSending) setShowBulkReview(false); }}
+              className="text-kept-gray hover:text-kept-dark"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+            {bulkPreparing && (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-kept-gray">
+                <Loader2 className="w-8 h-8 animate-spin text-kept-sage" />
+                <p className="text-sm font-medium">Preparing proposals…</p>
+                <p className="text-xs">Matching providers and drafting messages</p>
+              </div>
+            )}
+
+            {!bulkPreparing && bulkProposals.map((proposal) => {
+              const excluded = bulkExcluded.has(proposal.referralId);
+              const expanded = bulkExpanded.has(proposal.referralId);
+              const sendResult = bulkSendResults[proposal.referralId];
+              const hasError = !!proposal.error;
+
+              return (
+                <div
+                  key={proposal.referralId}
+                  className={`rounded-lg border transition-all ${
+                    excluded || hasError
+                      ? 'border-gray-200 bg-gray-50 opacity-60'
+                      : sendResult === true
+                      ? 'border-kept-green/30 bg-emerald-50'
+                      : sendResult === false
+                      ? 'border-red-300 bg-red-50'
+                      : 'border-kept-sage/20 bg-white'
+                  }`}
+                >
+                  <div className="flex items-start gap-3 p-3">
+                    {/* Checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={!excluded && !hasError}
+                      disabled={hasError || bulkSending || sendResult !== undefined}
+                      onChange={(e) => {
+                        const next = new Set(bulkExcluded);
+                        if (!e.target.checked) next.add(proposal.referralId);
+                        else next.delete(proposal.referralId);
+                        setBulkExcluded(next);
+                      }}
+                      className="mt-0.5 w-4 h-4 rounded accent-kept-sage shrink-0"
+                    />
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm text-kept-dark">{proposal.patientLabel}</span>
+                          <Badge className={`text-xs ${proposal.originalStatus === 'new' ? 'bg-kept-sage-light text-kept-sage border-kept-sage/20' : 'bg-kept-amber-light text-kept-orange border-kept-orange/20'}`}>
+                            {proposal.originalStatus === 'new' ? 'New → Matched' : 'Matched'}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {sendResult === true && <span className="text-xs text-kept-green font-medium flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" />Sent</span>}
+                          {sendResult === false && <span className="text-xs text-red-600 font-medium">Failed</span>}
+                          {sendResult === null && <Loader2 className="w-3.5 h-3.5 animate-spin text-kept-gray" />}
+                          {!hasError && sendResult === undefined && (
+                            <button
+                              onClick={() => {
+                                const next = new Set(bulkExpanded);
+                                if (expanded) next.delete(proposal.referralId);
+                                else next.add(proposal.referralId);
+                                setBulkExpanded(next);
+                              }}
+                              className="text-kept-gray hover:text-kept-dark"
+                            >
+                              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {hasError ? (
+                        <p className="text-xs text-red-600">{proposal.error}</p>
+                      ) : (
+                        <>
+                          <p className="text-xs text-kept-gray mb-1.5">
+                            <span className="font-medium text-kept-dark">{proposal.provider.name}</span>
+                            {proposal.provider.specialty && ` · ${proposal.provider.specialty}`}
+                            {proposal.provider.rationale && (
+                              <span className="text-kept-sage"> · {proposal.provider.rationale}</span>
+                            )}
+                          </p>
+
+                          {/* Message preview / edit */}
+                          {expanded ? (
+                            <Textarea
+                              value={bulkMessages[proposal.referralId] ?? proposal.message}
+                              onChange={(e) => setBulkMessages({ ...bulkMessages, [proposal.referralId]: e.target.value })}
+                              rows={4}
+                              className="text-xs border-kept-sage/20 focus:ring-kept-sage mt-1.5"
+                            />
+                          ) : (
+                            <p className="text-xs text-kept-gray bg-kept-sage-light/30 rounded p-2 leading-relaxed line-clamp-2">
+                              {bulkMessages[proposal.referralId] ?? proposal.message}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Footer */}
+          {!bulkPreparing && bulkProposals.length > 0 && (
+            <div className="px-6 py-4 border-t border-kept-sage/10 flex items-center justify-between bg-white">
+              {(() => {
+                const toSend = bulkProposals.filter((p) => !bulkExcluded.has(p.referralId) && !p.error);
+                const sent = Object.values(bulkSendResults).filter(Boolean).length;
+                const allDone = Object.keys(bulkSendResults).length > 0 &&
+                  Object.keys(bulkSendResults).length === toSend.length;
+                return (
+                  <>
+                    <p className="text-sm text-kept-gray">
+                      {allDone
+                        ? `${sent} of ${toSend.length} sent successfully`
+                        : `${toSend.length} of ${bulkProposals.length} selected`}
+                    </p>
+                    {allDone ? (
+                      <Button
+                        onClick={() => setShowBulkReview(false)}
+                        className="bg-kept-sage hover:bg-kept-sage/90 text-white gap-2"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Done
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleBulkSend}
+                        disabled={bulkSending || toSend.length === 0}
+                        className="bg-kept-sage hover:bg-kept-sage/90 text-white gap-2"
+                      >
+                        {bulkSending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Sending…
+                          </>
+                        ) : (
+                          <>
+                            <Phone className="w-4 h-4" />
+                            Send {toSend.length} Message{toSend.length !== 1 ? 's' : ''}
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
