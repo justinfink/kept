@@ -7,6 +7,10 @@ import { ReferralWithPatient, ReferralStatus } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Clock,
   AlertTriangle,
@@ -17,6 +21,9 @@ import {
   Search,
   LogOut,
   User,
+  Plus,
+  Link,
+  Loader2,
 } from 'lucide-react';
 
 const STATUS_CONFIG: Record<ReferralStatus, { label: string; className: string }> = {
@@ -48,28 +55,51 @@ function getUrgencyBg(days: number): string {
   return 'bg-kept-sage-light/50 border-kept-sage/10';
 }
 
-function getActionButton(status: ReferralStatus): { label: string; icon: React.ReactNode } {
+function getActionButton(status: ReferralStatus): { label: string; icon: React.ReactNode; hint: string } {
   switch (status) {
     case 'new':
-      return { label: 'Find Match', icon: <Search className="w-4 h-4" /> };
+      return { label: 'Find Match', icon: <Search className="w-4 h-4" />, hint: 'Match a provider to get started' };
     case 'matched':
-      return { label: 'Send Outreach', icon: <Phone className="w-4 h-4" /> };
+      return { label: 'Send Outreach', icon: <Phone className="w-4 h-4" />, hint: 'Provider matched — send patient SMS' };
     case 'outreach_sent':
-      return { label: 'View Outreach', icon: <ArrowRight className="w-4 h-4" /> };
+      return { label: 'View Status', icon: <ArrowRight className="w-4 h-4" />, hint: 'Waiting for patient to book' };
     case 'booked':
-      return { label: 'Confirm Kept', icon: <CheckCircle2 className="w-4 h-4" /> };
+      return { label: 'Confirm Kept', icon: <CheckCircle2 className="w-4 h-4" />, hint: 'Appointment scheduled — confirm attendance' };
     case 'no_show':
-      return { label: 'Follow Up', icon: <Phone className="w-4 h-4" /> };
+      return { label: 'Follow Up', icon: <Phone className="w-4 h-4" />, hint: 'Patient no-showed — send follow-up' };
+    case 'kept':
+      return { label: 'View', icon: <CheckCircle2 className="w-4 h-4" />, hint: 'Appointment kept — PCP notified' };
     default:
-      return { label: 'View', icon: <ArrowRight className="w-4 h-4" /> };
+      return { label: 'View', icon: <ArrowRight className="w-4 h-4" />, hint: '' };
   }
 }
+
+const EMPTY_FORM = {
+  firstName: '',
+  lastName: '',
+  phone: '',
+  zipCode: '',
+  insurance: '',
+  phq9Score: '',
+  pcpName: '',
+  diagnosisContext: '',
+  consentGiven: false,
+};
 
 export default function DashboardPage() {
   const router = useRouter();
   const [referrals, setReferrals] = useState<ReferralWithPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'at_risk' | 'action_needed'>('all');
+
+  // New Referral dialog state
+  const [showNewReferral, setShowNewReferral] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  // Per-card copy-link state
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const fetchReferrals = useCallback(async () => {
     try {
@@ -88,15 +118,12 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchReferrals();
 
-    // Subscribe to real-time updates on referrals table
     const channel = supabase
       .channel('referrals-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'referrals' },
-        () => {
-          fetchReferrals();
-        }
+        () => fetchReferrals()
       )
       .subscribe();
 
@@ -104,6 +131,40 @@ export default function DashboardPage() {
       supabase.removeChannel(channel);
     };
   }, [fetchReferrals]);
+
+  const handleCopyLink = (e: React.MouseEvent, referralId: string) => {
+    e.stopPropagation();
+    const url = `${window.location.origin}/book/${referralId}`;
+    navigator.clipboard.writeText(url);
+    setCopiedId(referralId);
+    setTimeout(() => setCopiedId(null), 2500);
+  };
+
+  const handleCreateReferral = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormLoading(true);
+    setFormError('');
+    try {
+      const res = await fetch('/api/referrals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowNewReferral(false);
+        setForm(EMPTY_FORM);
+        // Navigate directly to the new referral with autoMatch flag
+        router.push(`/dashboard/${data.referralId}?autoMatch=true`);
+      } else {
+        setFormError(data.error || 'Failed to create referral.');
+      }
+    } catch {
+      setFormError('Something went wrong. Please try again.');
+    } finally {
+      setFormLoading(false);
+    }
+  };
 
   const filteredReferrals = referrals.filter((r) => {
     if (filter === 'at_risk') {
@@ -143,6 +204,14 @@ export default function DashboardPage() {
             <span className="text-xs text-kept-gray hidden sm:block">Riverside Family Medicine</span>
           </div>
           <div className="flex items-center gap-3">
+            <Button
+              onClick={() => setShowNewReferral(true)}
+              size="sm"
+              className="bg-kept-sage hover:bg-kept-sage/90 text-white gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              New Referral
+            </Button>
             <div className="flex items-center gap-1.5 text-kept-gray">
               <User className="w-4 h-4" />
               <span className="text-sm hidden sm:block">Coordinator</span>
@@ -222,10 +291,26 @@ export default function DashboardPage() {
                         <span>{patient.insurance || 'No insurance'}</span>
                         <span>ZIP {patient.zip_code}</span>
                         <span>PCP: {referral.referring_pcp_name}</span>
+                        {referral.status === 'booked' && referral.appointment_date && (
+                          <span className="flex items-center gap-1 text-kept-green font-medium">
+                            <Calendar className="w-3.5 h-3.5" />
+                            Appt:{' '}
+                            {new Date(referral.appointment_date).toLocaleDateString('en-US', {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        )}
                       </div>
+                      {action.hint && (
+                        <p className="text-xs text-kept-sage mt-1.5 font-medium">{action.hint}</p>
+                      )}
                     </div>
 
-                    {/* Right: Urgency + Action */}
+                    {/* Right: Urgency + Actions */}
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       <div className={`flex items-center gap-1.5 text-sm font-medium ${getUrgencyColor(days)}`}>
                         <Clock className="w-4 h-4" />
@@ -233,17 +318,45 @@ export default function DashboardPage() {
                           {days <= 0 ? 'Window closing today' : `${days}d remaining`}
                         </span>
                       </div>
-                      <Button
-                        size="sm"
-                        className="bg-kept-sage hover:bg-kept-sage/90 text-white text-xs gap-1.5"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push(`/dashboard/${referral.id}`);
-                        }}
-                      >
-                        {action.icon}
-                        {action.label}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {/* Quick action: Copy booking link for outreach_sent */}
+                        {referral.status === 'outreach_sent' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-kept-sage/30 text-kept-sage hover:bg-kept-sage-light/50 text-xs gap-1.5"
+                            onClick={(e) => handleCopyLink(e, referral.id)}
+                          >
+                            {copiedId === referral.id ? (
+                              <>
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Link className="w-3.5 h-3.5" />
+                                Copy Link
+                              </>
+                            )}
+                          </Button>
+                        )}
+                        {/* Primary action button */}
+                        <Button
+                          size="sm"
+                          className="bg-kept-sage hover:bg-kept-sage/90 text-white text-xs gap-1.5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (referral.status === 'new') {
+                              router.push(`/dashboard/${referral.id}?autoMatch=true`);
+                            } else {
+                              router.push(`/dashboard/${referral.id}`);
+                            }
+                          }}
+                        >
+                          {action.icon}
+                          {action.label}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -259,6 +372,165 @@ export default function DashboardPage() {
           )}
         </div>
       </main>
+
+      {/* New Referral Dialog */}
+      <Dialog open={showNewReferral} onOpenChange={(open) => { setShowNewReferral(open); if (!open) { setForm(EMPTY_FORM); setFormError(''); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-kept-dark">New Referral</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateReferral} className="space-y-4 pt-1">
+            {/* Patient name */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="firstName" className="text-sm font-medium text-kept-dark">First name <span className="text-red-500">*</span></Label>
+                <Input
+                  id="firstName"
+                  value={form.firstName}
+                  onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                  placeholder="Jane"
+                  required
+                  className="border-kept-sage/20 focus:ring-kept-sage"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lastName" className="text-sm font-medium text-kept-dark">Last name <span className="text-red-500">*</span></Label>
+                <Input
+                  id="lastName"
+                  value={form.lastName}
+                  onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                  placeholder="Smith"
+                  required
+                  className="border-kept-sage/20 focus:ring-kept-sage"
+                />
+              </div>
+            </div>
+
+            {/* Phone + ZIP */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="phone" className="text-sm font-medium text-kept-dark">Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="(555) 000-0000"
+                  className="border-kept-sage/20 focus:ring-kept-sage"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="zipCode" className="text-sm font-medium text-kept-dark">ZIP code <span className="text-red-500">*</span></Label>
+                <Input
+                  id="zipCode"
+                  value={form.zipCode}
+                  onChange={(e) => setForm({ ...form, zipCode: e.target.value })}
+                  placeholder="02134"
+                  required
+                  maxLength={5}
+                  className="border-kept-sage/20 focus:ring-kept-sage"
+                />
+              </div>
+            </div>
+
+            {/* Insurance + PHQ-9 */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="insurance" className="text-sm font-medium text-kept-dark">Insurance</Label>
+                <Input
+                  id="insurance"
+                  value={form.insurance}
+                  onChange={(e) => setForm({ ...form, insurance: e.target.value })}
+                  placeholder="BlueCross, Medicaid…"
+                  className="border-kept-sage/20 focus:ring-kept-sage"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="phq9Score" className="text-sm font-medium text-kept-dark">PHQ-9 score</Label>
+                <Input
+                  id="phq9Score"
+                  type="number"
+                  min={0}
+                  max={27}
+                  value={form.phq9Score}
+                  onChange={(e) => setForm({ ...form, phq9Score: e.target.value })}
+                  placeholder="0–27"
+                  className="border-kept-sage/20 focus:ring-kept-sage"
+                />
+              </div>
+            </div>
+
+            {/* PCP */}
+            <div className="space-y-1.5">
+              <Label htmlFor="pcpName" className="text-sm font-medium text-kept-dark">Referring PCP <span className="text-red-500">*</span></Label>
+              <Input
+                id="pcpName"
+                value={form.pcpName}
+                onChange={(e) => setForm({ ...form, pcpName: e.target.value })}
+                placeholder="Dr. Patel"
+                required
+                className="border-kept-sage/20 focus:ring-kept-sage"
+              />
+            </div>
+
+            {/* Diagnosis context */}
+            <div className="space-y-1.5">
+              <Label htmlFor="diagnosisContext" className="text-sm font-medium text-kept-dark">Diagnosis context <span className="text-xs font-normal text-kept-gray">(internal, not shared with patient)</span></Label>
+              <Textarea
+                id="diagnosisContext"
+                value={form.diagnosisContext}
+                onChange={(e) => setForm({ ...form, diagnosisContext: e.target.value })}
+                placeholder="e.g. Generalized anxiety, history of trauma, prefers female provider"
+                rows={2}
+                className="border-kept-sage/20 focus:ring-kept-sage text-sm"
+              />
+            </div>
+
+            {/* Consent */}
+            <div className="flex items-center gap-2.5">
+              <input
+                id="consentGiven"
+                type="checkbox"
+                checked={form.consentGiven}
+                onChange={(e) => setForm({ ...form, consentGiven: e.target.checked })}
+                className="w-4 h-4 rounded border-kept-sage/30 accent-kept-sage"
+              />
+              <Label htmlFor="consentGiven" className="text-sm text-kept-dark cursor-pointer">
+                Patient has given verbal consent to be contacted
+              </Label>
+            </div>
+
+            {formError && (
+              <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{formError}</p>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowNewReferral(false)}
+                className="border-kept-sage/30 text-kept-gray"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={formLoading}
+                className="bg-kept-sage hover:bg-kept-sage/90 text-white gap-2"
+              >
+                {formLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creating…
+                  </>
+                ) : (
+                  'Create & Find Match'
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

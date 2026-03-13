@@ -29,7 +29,7 @@ export default function PatientBookingPage() {
 
   const [data, setData] = useState<BookingData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [booking, setBooking] = useState(false);
+  const [bookingSlot, setBookingSlot] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function PatientBookingPage() {
   }, [referralId, router]);
 
   const handleBook = async (slot: string) => {
-    setBooking(true);
+    setBookingSlot(slot);
     try {
       const res = await fetch(`/api/book/${referralId}`, {
         method: 'POST',
@@ -69,11 +69,11 @@ export default function PatientBookingPage() {
         router.push(`/book/${referralId}/confirmed?date=${encodeURIComponent(slot)}&provider=${encodeURIComponent(data?.provider?.full_name || '')}`);
       } else {
         setError(json.error || 'Failed to book. Please try again.');
-        setBooking(false);
+        setBookingSlot(null);
       }
     } catch {
       setError('Something went wrong. Please try again.');
-      setBooking(false);
+      setBookingSlot(null);
     }
   };
 
@@ -151,29 +151,37 @@ export default function PatientBookingPage() {
             const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
             const dateStr = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
             const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            const isSelected = bookingSlot === slot;
+            const isDisabled = bookingSlot !== null;
 
             return (
               <Button
                 key={index}
                 onClick={() => handleBook(slot)}
-                disabled={booking}
-                className="w-full h-auto py-4 px-5 bg-white hover:bg-kept-sage-light/50 text-left border border-kept-sage/15 hover:border-kept-sage/40 rounded-xl transition-all shadow-sm"
+                disabled={isDisabled}
+                className={`w-full h-auto py-4 px-5 text-left border rounded-xl transition-all shadow-sm ${
+                  isSelected
+                    ? 'bg-kept-sage border-kept-sage text-white'
+                    : isDisabled
+                    ? 'bg-white border-kept-sage/10 opacity-40 cursor-not-allowed'
+                    : 'bg-white hover:bg-kept-sage-light/50 border-kept-sage/15 hover:border-kept-sage/40'
+                }`}
                 variant="outline"
               >
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-kept-sage-light rounded-lg flex items-center justify-center">
-                      <Clock className="w-5 h-5 text-kept-sage" />
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isSelected ? 'bg-white/20' : 'bg-kept-sage-light'}`}>
+                      <Clock className={`w-5 h-5 ${isSelected ? 'text-white' : 'text-kept-sage'}`} />
                     </div>
                     <div>
-                      <p className="font-semibold text-kept-dark text-base">{dayName}</p>
-                      <p className="text-sm text-kept-gray">{dateStr} at {timeStr}</p>
+                      <p className={`font-semibold text-base ${isSelected ? 'text-white' : 'text-kept-dark'}`}>{dayName}</p>
+                      <p className={`text-sm ${isSelected ? 'text-white/80' : 'text-kept-gray'}`}>{dateStr} at {timeStr}</p>
                     </div>
                   </div>
-                  {booking ? (
-                    <Loader2 className="w-5 h-5 text-kept-sage animate-spin" />
+                  {isSelected ? (
+                    <Loader2 className="w-5 h-5 text-white animate-spin" />
                   ) : (
-                    <CheckCircle2 className="w-5 h-5 text-kept-sage/40" />
+                    <CheckCircle2 className="w-5 h-5 text-kept-sage/30" />
                   )}
                 </div>
               </Button>
