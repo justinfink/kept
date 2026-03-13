@@ -113,6 +113,7 @@ export default function DashboardPage() {
   const [bulkMessages, setBulkMessages] = useState<Record<string, string>>({});
   const [bulkExpanded, setBulkExpanded] = useState<Set<string>>(new Set());
   const [bulkSendResults, setBulkSendResults] = useState<Record<string, boolean | null>>({});
+  const [bulkSendErrors, setBulkSendErrors] = useState<Record<string, string>>({});
 
   const fetchReferrals = useCallback(async () => {
     try {
@@ -190,6 +191,7 @@ export default function DashboardPage() {
     setBulkMessages({});
     setBulkExpanded(new Set());
     setBulkSendResults({});
+    setBulkSendErrors({});
 
     try {
       const res = await fetch('/api/bulk-prepare', {
@@ -241,10 +243,13 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       const results: Record<string, boolean | null> = {};
+      const errors: Record<string, string> = {};
       for (const r of data.results || []) {
         results[r.referralId] = r.success;
+        if (!r.success && r.error) errors[r.referralId] = r.error;
       }
       setBulkSendResults(results);
+      setBulkSendErrors(errors);
       fetchReferrals();
     } catch (err) {
       console.error('Bulk send failed:', err);
@@ -743,6 +748,11 @@ export default function DashboardPage() {
                           ) : (
                             <p className="text-xs text-kept-gray bg-kept-sage-light/30 rounded p-2 leading-relaxed line-clamp-2">
                               {bulkMessages[proposal.referralId] ?? proposal.message}
+                            </p>
+                          )}
+                          {sendResult === false && bulkSendErrors[proposal.referralId] && (
+                            <p className="text-xs text-red-600 mt-1.5 bg-red-50 rounded px-2 py-1">
+                              {bulkSendErrors[proposal.referralId]}
                             </p>
                           )}
                         </>
