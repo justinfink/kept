@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { ReferralWithPatient, MatchedProvider, OutreachEvent } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
@@ -112,7 +112,9 @@ function WorkflowStepper({ status }: { status: string }) {
 export default function ReferralDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const referralId = params.referralId as string;
+  const autoMatchTriggered = useRef(false);
 
   const [referral, setReferral] = useState<ReferralWithPatient | null>(null);
   const [loading, setLoading] = useState(true);
@@ -172,6 +174,20 @@ export default function ReferralDetailPage() {
       supabase.removeChannel(channel);
     };
   }, [referralId, fetchReferral, fetchOutreachEvents]);
+
+  // Auto-trigger provider match when arriving from "New Referral" flow
+  useEffect(() => {
+    if (
+      referral &&
+      referral.status === 'new' &&
+      searchParams.get('autoMatch') === 'true' &&
+      !autoMatchTriggered.current
+    ) {
+      autoMatchTriggered.current = true;
+      handleFindMatch();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [referral]);
 
   const handleFindMatch = async () => {
     setMatchLoading(true);
