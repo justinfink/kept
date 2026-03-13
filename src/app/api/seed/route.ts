@@ -89,6 +89,18 @@ export async function POST() {
     for (const p of PATIENTS) {
       const { referral: referralData, ...patientData } = p;
 
+      // Skip if this test patient already exists
+      const { data: existing } = await supabase
+        .from('patients')
+        .select('id')
+        .eq('practice_id', PRACTICE_ID)
+        .eq('first_name', patientData.first_name)
+        .eq('last_name', patientData.last_name)
+        .eq('phone', patientData.phone)
+        .maybeSingle();
+
+      if (existing) continue;
+
       const { data: patient, error: patientError } = await supabase
         .from('patients')
         .insert({

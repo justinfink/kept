@@ -50,8 +50,16 @@ export default function LoginPage() {
     }
   };
 
-  const handleDemoMode = () => {
-    router.push('/dashboard');
+  const handleDemoMode = async () => {
+    setLoading(true);
+    try {
+      await fetch('/api/seed', { method: 'POST' });
+    } catch {
+      // non-blocking — proceed to dashboard even if seed fails
+    } finally {
+      setLoading(false);
+      router.push('/dashboard');
+    }
   };
 
   return (
