@@ -1050,14 +1050,6 @@ export default function ReferralDetailPage() {
                       </span>
                     </div>
                     <p className="text-sm text-kept-dark">{event.content}</p>
-                    <a
-                      href={`${window.location.origin}/book/${referralId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-kept-sage underline mt-1 block"
-                    >
-                      Booking link (live)
-                    </a>
                     {event.twilio_sid && (
                       <p className="text-xs text-kept-gray mt-1">Twilio SID: {event.twilio_sid}</p>
                     )}
