@@ -86,7 +86,7 @@ const EMPTY_FORM = {
   phq9Score: '',
   pcpName: '',
   diagnosisContext: '',
-  consentGiven: false,
+  consentGiven: true,
 };
 
 export default function DashboardPage() {
