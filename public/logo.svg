@@ -1,0 +1,16 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background - Kept sage -->
+  <rect width="200" height="200" rx="32" fill="#2A5C45"/>
+
+  <!-- Clean figure-8 / infinity loop -->
+  <path d="M100,100
+    C100,80 130,70 140,85
+    C150,100 130,115 100,100
+    C70,85 50,100 60,115
+    C70,130 100,120 100,100Z"
+    fill="none"
+    stroke="#D5EBE0"
+    stroke-width="8"
+    stroke-linecap="round"
+    stroke-linejoin="round"/>
+</svg>
